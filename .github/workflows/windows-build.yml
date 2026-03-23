@@ -1,0 +1,187 @@
+# .github/workflows/windows-build.yml
+# This workflow builds the Windows application and stores it as an artifact.
+# Use the separate "Create Release" workflow to manually create releases from these builds.
+
+name: Build Windows App
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on version tags like v1.0.0
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'requirements.txt'
+      - '.github/workflows/windows-build.yml'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read       # To checkout code
+      actions: write       # To upload artifacts
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python for Nuitka build process
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install zstd decompressor
+        run: choco install zstandard -y
+
+      - name: Prepare Portable Python Runtime
+        shell: pwsh
+        run: |
+          # 1. Download the specified full, pre-built, standalone Python distribution.
+          $url = "https://github.com/astral-sh/python-build-standalone/releases/download/20250808/cpython-3.11.13+20250808-x86_64-pc-windows-msvc-pgo-full.tar.zst"
+          
+          Write-Host "Downloading Python runtime from hardcoded URL: $url"
+          Invoke-WebRequest -Uri $url -OutFile "python-standalone.tar.zst"
+
+          # 2. Decompress the archive in two steps: zstd -> tar.
+          Write-Host "Decompressing python-standalone.tar.zst..."
+          zstd -d python-standalone.tar.zst -o python-standalone.tar
+          
+          Write-Host "Extracting python-standalone.tar..."
+          tar -xf python-standalone.tar
+          
+          # 3. Move the contents from the correct 'python\install' subfolder.
+          New-Item -ItemType Directory -Force -Path python_runtime
+          Write-Host "Moving extracted runtime from 'python\install' to 'python_runtime'..."
+          Move-Item -Path "python\install\*" -Destination "python_runtime"
+          Remove-Item "python", "python-standalone.tar.zst", "python-standalone.tar" -Recurse -Force
+          
+          Write-Host "Python runtime prepared."
+
+      - name: Install dependencies for Nuitka build
+        run: pip install -r requirements.txt
+
+      - name: Build app with Nuitka
+        run: |
+          cd src
+          python -m nuitka `
+            --standalone `
+            --enable-plugin=pyside6 `
+            --include-qt-plugins=platforms `
+            --output-dir=../NodeEditor_Build `
+            --output-filename=PyFlowGraph.exe `
+            --nofollow-import-to=tkinter,unittest,setuptools,pip,wheel `
+            --windows-disable-console `
+            --remove-output `
+            --lto=yes `
+            --include-data-dir=../examples=examples `
+            --include-data-dir=resources=resources `
+            --include-data-file=../dark_theme.qss=dark_theme.qss `
+            --assume-yes-for-downloads `
+            main.py
+          cd ..
+
+      - name: Copy Python runtime after Nuitka build
+        id: copy_runtime
+        shell: pwsh
+        run: |
+          # Debug: Check what Nuitka actually created
+          Write-Host "=== NUITKA OUTPUT DEBUG ==="
+          Write-Host "Contents of NodeEditor_Build:"
+          Get-ChildItem "NodeEditor_Build" -ErrorAction SilentlyContinue | Format-Table Name, Length, LastWriteTime
+          
+          # Nuitka creates main.dist directory even with --output-filename
+          # The executable inside is renamed, but the directory stays main.dist
+          $distDir = "NodeEditor_Build\main.dist"
+          
+          if (Test-Path $distDir) {
+            Write-Host "Found Nuitka output directory: $distDir"
+          } else {
+            Write-Error "Expected Nuitka output directory not found: $distDir"
+            exit 1
+          }
+          
+          Write-Host "Copying python_runtime to $distDir as subdirectory..."
+          Copy-Item -Path "python_runtime" -Destination "$distDir\python_runtime" -Recurse -Force
+          Write-Host "Python runtime copied successfully to $distDir\python_runtime"
+          
+          # Store the actual dist directory for later steps
+          echo "actual_dist_dir=$distDir" >> $env:GITHUB_OUTPUT
+
+      - name: Prepare build artifact
+        id: package
+        shell: pwsh
+        run: |
+          # Extract version from tag, fallback to ref_name if not a tag
+          if ("${{ github.ref }}" -like "refs/tags/*") {
+            $version = "${{ github.ref_name }}"
+          } else {
+            $version = "dev-${{ github.sha }}".Substring(0, 15)
+          }
+          $version = $version -replace '[\/\\:*?"<>|]', '-'  # Replace invalid characters
+          $build_dir = "NodeEditor_Build"
+          $dist_dir = "${{ steps.copy_runtime.outputs.actual_dist_dir }}"
+          
+          # Debug: Show current build directory structure
+          Write-Host "=== BUILD DIRECTORY STRUCTURE DEBUG ==="
+          Write-Host "Build directory contents:"
+          Get-ChildItem $build_dir -ErrorAction SilentlyContinue | Format-Table Name, Length, LastWriteTime
+          
+          # Verify the directory exists and show its contents
+          if (-not (Test-Path $dist_dir)) {
+            Write-Error "Build directory not found: $dist_dir"
+            exit 1
+          }
+          
+          Write-Host "Contents of $dist_dir (before renaming):"
+          Get-ChildItem $dist_dir -ErrorAction SilentlyContinue | Format-Table Name, Length, LastWriteTime
+          Write-Host "========================================"
+          
+          $artifact_dir_name = "PyFlowGraph-Windows-$version"
+          
+          Write-Host "Renaming $dist_dir to $artifact_dir_name for artifact upload"
+          Rename-Item -Path $dist_dir -NewName $artifact_dir_name -Force
+          
+          $artifact_path = Join-Path $build_dir $artifact_dir_name
+          Write-Host "Artifact prepared at: $artifact_path"
+          
+          # Debug: Show final artifact contents
+          Write-Host "Final artifact contents:"
+          Get-ChildItem $artifact_path -ErrorAction SilentlyContinue | Format-Table Name, Length, LastWriteTime
+          
+          echo "artifact_path=$artifact_path" >> $env:GITHUB_OUTPUT
+          echo "artifact_name=$artifact_dir_name" >> $env:GITHUB_OUTPUT
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: PyFlowGraph-Windows-${{ steps.package.outputs.version }}
+          path: ${{ steps.package.outputs.artifact_path }}
+          retention-days: 90
+          
+      - name: Build summary (Tag Build)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          echo "## Tag Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.package.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifact:** ${{ steps.package.outputs.artifact_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download the artifact from this build to test locally" >> $GITHUB_STEP_SUMMARY
+          echo "2. Once verified, use the 'Create Release' workflow to publish" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[Download Artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+
+      - name: Build summary (PR Build)
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "## PR Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build verification passed for this pull request.**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The application builds successfully with the proposed changes." >> $GITHUB_STEP_SUMMARY

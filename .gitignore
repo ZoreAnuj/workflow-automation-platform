@@ -1,0 +1,165 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+builds/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Pyre type checker
+.pyre/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+*.iml
+
+# VS Code
+.history/
+
+# Mac OS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+nul
+
+# Other
+*.log
+*.pot
+*.mo
+*.pyc
+*.pyo
+
+# Python development
+.python-version
+.envrc
+*.pyd
+*.pdb
+
+# Backup files
+*~
+*.bak
+*.swp
+*.swo
+
+# Qt/PySide6 specific
+*.qmlc
+*.jsc
+*.ui.h
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+qrc_*.py
+
+# Local test databases
+*.sqlite3
+
+# Wheel build directory
+*.bdist_wheel/
+
+# Generated files
+generated_readme.md
+
+# Other venv's 
+venv*/
+.venv*/
+*venv/
+
+# python runtime if it exists. when debugging the compiled code with the runtime it was necessary to hack things to run that runtime within the python version of the code
+python_runtime
+
+# Ignore Claude AI files
+.claude/
+.claude_code/
+.serena/
+
+# pre releases
+pre-release
+temp
+
+# BEMAD files
+.bmad-core/
+.bmad-*
+
+# Personal AI configurations
+.superclaude/
+claude_agents/
+claude_commands/
+
+npm-global/
+
+# Node.js (if used)
+node_modules/
+package-lock.json
+yarn.lock
+
+# PyFlowGraph specific
+examples/*.backup
+temp_graphs/
